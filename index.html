@@ -650,6 +650,30 @@
   body.dark .vocab-tbl th{background:rgba(255,255,255,0.05);color:#aab8c8;}
   body.dark .vocab-tbl td{color:#e8f0f7;border-color:#2a3a4a;}
   body.dark .vocab-tbl tr:hover{background:rgba(255,255,255,0.02);}
+
+  /* ── FLASHCARD PAGE ── */
+  #flashcard-page{display:none;background:var(--paper);}
+  #flashcard-page.active{display:block;}
+  .fc-card{perspective:1000px;width:100%;height:440px;margin:0 auto;max-width:500px;}
+  .fc-card-inner{position:relative;width:100%;height:100%;text-align:center;transition:transform 0.6s;transform-style:preserve-3d;}
+  .fc-card.flipped .fc-card-inner{transform:rotateY(180deg);}
+  .fc-card-front, .fc-card-back{position:absolute;width:100%;height:100%;-webkit-backface-visibility:hidden;backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;border:2px solid var(--ink);border-radius:12px;padding:20px;box-shadow:0 8px 16px var(--shadow);box-sizing:border-box;}
+  .fc-card-back{transform:rotateY(180deg);align-items:stretch;}
+  body.dark .fc-card-front, body.dark .fc-card-back{background:#111a22;border-color:#2a3a4a;}
+  .fc-btn{padding:12px 24px;font-size:16px;font-family:'Courier Prime',monospace;font-weight:700;border:none;border-radius:8px;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;}
+  .fc-btn-wrong{background:#fdecea;color:var(--red);border:2px solid var(--red);}
+  .fc-btn-wrong:hover{background:var(--red);color:#fff;}
+  .fc-btn-right{background:#e8f5e9;color:var(--green);border:2px solid var(--green);}
+  .fc-btn-right:hover{background:var(--green);color:#fff;}
+  body.dark .fc-btn-wrong{background:transparent;}
+  body.dark .fc-btn-wrong:hover{background:var(--red);}
+  body.dark .fc-btn-right{background:transparent;}
+  body.dark .fc-btn-right:hover{background:var(--green);}
+  .fc-main-btn{background:#fff;color:var(--ink);border:2px solid var(--ink);padding:60px 40px;font-family:'Playfair Display',serif;font-size:28px;font-weight:700;cursor:pointer;transition:all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);border-radius:12px;box-shadow:0 8px 16px var(--shadow);display:inline-flex;align-items:center;justify-content:center;width:100%;max-width:400px;margin:30px auto;box-sizing:border-box;flex-direction:column;gap:10px;}
+  .fc-main-btn span.sub{font-size:14px;font-family:'Courier Prime',monospace;color:var(--accent);font-weight:400;text-transform:uppercase;letter-spacing:1px;}
+  .fc-main-btn:hover{transform:translateY(-6px);box-shadow:0 16px 24px var(--shadow);background:#fcfcfc;}
+  body.dark .fc-main-btn{background:#111a22;border-color:#2a3a4a;color:#fff;}
+  body.dark .fc-main-btn:hover{background:#182430;}
 </style>
 </head>
 <body>
@@ -849,6 +873,196 @@ function submitVocabForm(e){
       fetchVocabList();
     }
   });
+}
+
+/* FLASHCARDS LOGIC */
+let fcAllWords = [];
+let fcCurrentList = [];
+let fcWrongWords = [];
+let fcCurrentIdx = 0;
+let fcCorrectCount = 0;
+let fcTimerInterval = null;
+let fcSeconds = 0;
+let fcTimerEnabled = false;
+
+function openVocabFlashcards(){
+  document.querySelector('.practice-container').style.display='none';
+  document.getElementById('flashcard-page').classList.add('active');
+  window.scrollTo(0,0);
+  
+  document.getElementById('fc-setup-area').style.display = 'block';
+  document.getElementById('fc-active-area').style.display = 'none';
+  document.getElementById('fc-results-area').style.display = 'none';
+  document.getElementById('fc-loading').style.display = 'block';
+  document.getElementById('fc-start-btn').style.display = 'none';
+
+  fetch(VOCAB_SCRIPT_URL)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('fc-loading').style.display = 'none';
+      if(data.result === 'success' && data.data && data.data.length > 0) {
+        fcAllWords = data.data.filter(w => w.vocab);
+        if(fcAllWords.length > 0) {
+           document.getElementById('fc-start-btn').style.display = 'inline-flex';
+           document.getElementById('fc-start-btn').innerHTML = `Start Flashcards <span class="sub">(${fcAllWords.length} Words)</span>`;
+        } else {
+           document.getElementById('fc-loading').style.display = 'block';
+           document.getElementById('fc-loading').innerHTML = 'No vocabulary found.';
+        }
+      } else {
+        document.getElementById('fc-loading').style.display = 'block';
+        document.getElementById('fc-loading').innerHTML = 'Failed to load words.';
+      }
+    })
+    .catch(err => {
+      document.getElementById('fc-loading').style.display = 'block';
+      document.getElementById('fc-loading').innerHTML = 'Error connecting to Apps Script.';
+    });
+}
+
+function closeFlashcardPage(){
+  document.getElementById('flashcard-page').classList.remove('active');
+  document.querySelector('.practice-container').style.display='';
+  stopFcTimer();
+  window.scrollTo(0,0);
+}
+
+function toggleFcTimer(){
+  fcTimerEnabled = document.getElementById('fc-timer-toggle').checked;
+  const disp = document.getElementById('fc-timer-display');
+  if(fcTimerEnabled) {
+    disp.style.display = 'inline-block';
+    if(document.getElementById('fc-active-area').style.display === 'block') {
+      clearInterval(fcTimerInterval);
+      fcTimerInterval = setInterval(()=> {
+        fcSeconds++;
+        let m = String(Math.floor(fcSeconds/60)).padStart(2,'0');
+        let s = String(fcSeconds%60).padStart(2,'0');
+        document.getElementById('fc-timer-display').textContent = `${m}:${s}`;
+      }, 1000);
+    }
+  } else {
+    disp.style.display = 'none';
+    clearInterval(fcTimerInterval);
+  }
+}
+
+function startFlashcards(onlyWrong) {
+  fcCurrentList = onlyWrong ? [...fcWrongWords] : [...fcAllWords];
+  if(fcCurrentList.length === 0) return;
+  fcCurrentList.sort(()=> Math.random() - 0.5);
+  fcWrongWords = [];
+  fcCurrentIdx = 0;
+  fcCorrectCount = 0;
+  fcSeconds = 0;
+  
+  document.getElementById('fc-setup-area').style.display = 'none';
+  document.getElementById('fc-results-area').style.display = 'none';
+  document.getElementById('fc-active-area').style.display = 'block';
+  
+  if(fcTimerEnabled) {
+    document.getElementById('fc-timer-display').textContent = '00:00';
+    document.getElementById('fc-timer-display').style.display = 'inline-block';
+    clearInterval(fcTimerInterval);
+    fcTimerInterval = setInterval(()=> {
+      fcSeconds++;
+      let m = String(Math.floor(fcSeconds/60)).padStart(2,'0');
+      let s = String(fcSeconds%60).padStart(2,'0');
+      document.getElementById('fc-timer-display').textContent = `${m}:${s}`;
+    }, 1000);
+  } else {
+    document.getElementById('fc-timer-display').style.display = 'none';
+  }
+  
+  showFlashcard();
+}
+
+function showFlashcard() {
+  const card = document.getElementById('fc-card');
+  card.classList.remove('flipped');
+  document.getElementById('fc-controls').style.display = 'flex';
+  document.getElementById('fc-next-control').style.display = 'none';
+  
+  document.getElementById('fc-counter').textContent = `${fcCurrentIdx + 1} / ${fcCurrentList.length}`;
+  
+  const w = fcCurrentList[fcCurrentIdx];
+  document.getElementById('fc-word-front').textContent = w.vocab;
+  document.getElementById('fc-word-back').textContent = w.vocab;
+  
+  document.getElementById('fc-eng').textContent = w.meaning_english || '-';
+  document.getElementById('fc-hin').textContent = w.meaning_hindi || '-';
+  document.getElementById('fc-sen').textContent = w.sentence || '-';
+  document.getElementById('fc-syn').textContent = w.synonyms || '-';
+  document.getElementById('fc-ant').textContent = w.antonyms || '-';
+}
+
+function stopFcTimer() {
+  clearInterval(fcTimerInterval);
+}
+
+function markFlashcard(isCorrect) {
+  const w = fcCurrentList[fcCurrentIdx];
+  if(isCorrect) {
+    fcCorrectCount++;
+  } else {
+    fcWrongWords.push(w);
+  }
+  document.getElementById('fc-card').classList.add('flipped');
+  document.getElementById('fc-controls').style.display = 'none';
+  document.getElementById('fc-next-control').style.display = 'block';
+}
+
+function nextFlashcard() {
+  fcCurrentIdx++;
+  if(fcCurrentIdx < fcCurrentList.length) {
+    showFlashcard();
+  } else {
+    showFcResults();
+  }
+}
+
+function showFcResults() {
+  stopFcTimer();
+  document.getElementById('fc-active-area').style.display = 'none';
+  document.getElementById('fc-results-area').style.display = 'block';
+  
+  document.getElementById('fc-score').textContent = `${fcCorrectCount} / ${fcCurrentList.length}`;
+  
+  const rwBtn = document.getElementById('fc-restart-wrong-btn');
+  const wlBtn = document.getElementById('fc-wrong-list-title');
+  const wlContainer = document.getElementById('fc-wrong-list');
+  wlContainer.style.display = 'none';
+  
+  if(fcWrongWords.length > 0) {
+    rwBtn.style.display = 'inline-block';
+    wlBtn.style.display = 'inline-block';
+    
+    let html = '';
+    fcWrongWords.forEach(w => {
+      html += `<div style="margin-bottom:14px;border-bottom:1px solid var(--cream);padding-bottom:10px;">
+        <strong style="font-size:16px;color:var(--ink);">${w.vocab}</strong>
+        <div style="font-size:12px;color:#555;margin-top:4px;">
+          ${w.meaning_english ? `EN: ${w.meaning_english}<br>` : ''}
+          ${w.meaning_hindi ? `HI: ${w.meaning_hindi}<br>` : ''}
+          ${w.sentence ? `<em>Ex: ${w.sentence}</em>` : ''}
+        </div>
+      </div>`;
+    });
+    wlContainer.innerHTML = html;
+  } else {
+    rwBtn.style.display = 'none';
+    wlBtn.style.display = 'none';
+    wlContainer.innerHTML = '';
+  }
+}
+
+function toggleWrongList() {
+  const wl = document.getElementById('fc-wrong-list');
+  if(wl.style.display === 'none') {
+    wl.style.display = 'block';
+  } else {
+    wl.style.display = 'none';
+  }
 }
 
 function openRCNotes(){
@@ -2201,7 +2415,7 @@ function submitYtVideo(){
             <p>All IBPS SO IT Officer papers with answer keys. Attempt as timed mock or browse answers freely.</p>
           </div>
           <span class="hub-arrow">→</span>
-          <span class="hub-badge live">LIVE</span>
+          <span class="hub-badge soon">COMING SOON</span>
         </div>
         <div class="hub-card-body">
           <div class="stage-tabs">
@@ -2323,7 +2537,7 @@ function submitYtVideo(){
             <p>Full-length 125-question mock papers simulating actual exam conditions with scoring.</p>
           </div>
           <span class="hub-arrow">→</span>
-          <span class="hub-badge live">LIVE</span>
+          <span class="hub-badge soon">COMING SOON</span>
         </div>
         <div class="hub-card-body">
           <div class="stage-tabs">
@@ -2561,7 +2775,7 @@ function submitYtVideo(){
             <p>Mind maps, timelines, and visual summaries of key concepts and topics.</p>
           </div>
           <span class="hub-arrow">→</span>
-          <span class="hub-badge live">LIVE</span>
+          <span class="hub-badge soon">COMING SOON</span>
         </div>
         <div class="hub-card-body">
           <div class="stage-tabs">
@@ -2680,7 +2894,7 @@ function submitYtVideo(){
             <p>Quick-revision flashcards for formulas, concepts, definitions, and key terms.</p>
           </div>
           <span class="hub-arrow">→</span>
-          <span class="hub-badge soon">COMING SOON</span>
+          <span class="hub-badge live">LIVE</span>
         </div>
         <div class="hub-card-body">
           <div class="stage-tabs">
@@ -2702,7 +2916,7 @@ function submitYtVideo(){
               <div class="subj-hd" onclick="toggleSubj('fc-pre-en')"><span>English Language</span><span class="subj-arrow">›</span></div>
               <div class="subj-body">
                 <div class="topic-row"><span>Grammar Rules</span><span class="topic-soon">COMING SOON</span></div>
-                <div class="topic-row"><span>Vocabulary Lists</span><span class="topic-soon">COMING SOON</span></div>
+                <div class="topic-row"><span>Vocabulary Lists</span><span class="topic-link" onclick="openVocabFlashcards()">Practice →</span></div>
                 <div class="topic-row"><span>Idioms &amp; Phrases</span><span class="topic-soon">COMING SOON</span></div>
                 <div class="topic-row"><span>Error Spotting Rules</span><span class="topic-soon">COMING SOON</span></div>
               </div>
@@ -2797,7 +3011,7 @@ function submitYtVideo(){
             <p>Downloadable PDF notes, cheat sheets and topic summaries for each subject.</p>
           </div>
           <span class="hub-arrow">→</span>
-          <span class="hub-badge soon">COMING SOON</span>
+          <span class="hub-badge live">LIVE</span>
         </div>
         <div class="hub-card-body">
           <div class="stage-tabs">
@@ -3094,6 +3308,75 @@ function submitYtVideo(){
         <button type="submit" class="vocab-submit-btn" id="vocab-submit-btn">Submit Vocab</button>
       </form>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     FLASHCARD PAGE
+══════════════════════════════ -->
+<div id="flashcard-page">
+  <div class="vocab-page-header">
+    <div class="vocab-title-wrap">
+      <button class="vocab-back-btn" onclick="closeFlashcardPage()">← Back to Hub</button>
+      <span class="vocab-page-title">🃏 Vocabulary Flashcards</span>
+    </div>
+    <label style="font-size:12px;cursor:pointer;color:var(--paper);font-family:'Courier Prime',monospace;"><input type="checkbox" id="fc-timer-toggle" onchange="toggleFcTimer()"> Enable Timer</label>
+  </div>
+  <div class="vocab-page-inner" style="max-width:600px;">
+    
+    <div id="fc-setup-area" style="text-align:center;padding:20px;">
+      <div id="fc-loading" class="vocab-loading">Loading vocabulary words...</div>
+      <button id="fc-start-btn" class="fc-main-btn" style="display:none;" onclick="startFlashcards(false)"></button>
+    </div>
+
+    <div id="fc-active-area" style="display:none;text-align:center;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <span id="fc-counter" style="font-family:'Courier Prime',monospace;font-size:12px;font-weight:700;color:var(--ink);">1 / 10</span>
+        <span id="fc-timer-display" style="font-family:'Courier Prime',monospace;font-size:14px;font-weight:700;color:var(--accent);display:none;">00:00</span>
+      </div>
+      
+      <div class="fc-card" id="fc-card">
+        <div class="fc-card-inner" id="fc-card-inner">
+          <div class="fc-card-front">
+             <h2 id="fc-word-front" style="font-family:'Playfair Display',serif;font-size:36px;margin:0;color:var(--ink);">Word</h2>
+          </div>
+          <div class="fc-card-back">
+             <h3 id="fc-word-back" style="font-family:'Playfair Display',serif;font-size:24px;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:10px;color:var(--ink);">Word</h3>
+             <div class="fc-details" style="font-size:13px;text-align:left;height:100%;overflow-y:auto;color:var(--ink);">
+               <p style="margin-bottom:6px;"><strong>English:</strong> <span id="fc-eng"></span></p>
+               <p style="margin-bottom:6px;"><strong>Hindi:</strong> <span id="fc-hin"></span></p>
+               <p style="margin-bottom:6px;"><strong>Sentence:</strong> <em><span id="fc-sen"></span></em></p>
+               <p style="margin-bottom:6px;"><strong>Synonyms:</strong> <span id="fc-syn"></span></p>
+               <p style="margin-bottom:6px;"><strong>Antonyms:</strong> <span id="fc-ant"></span></p>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="fc-controls" style="margin-top:24px;display:flex;gap:20px;justify-content:center;">
+        <button class="fc-btn fc-btn-wrong" onclick="markFlashcard(false)">❌ Wrong</button>
+        <button class="fc-btn fc-btn-right" onclick="markFlashcard(true)">✅ Right</button>
+      </div>
+      <div id="fc-next-control" style="margin-top:24px;display:none;">
+        <button class="vocab-submit-btn" style="max-width:240px;margin:0 auto;" onclick="nextFlashcard()">Next Card →</button>
+      </div>
+    </div>
+
+    <div id="fc-results-area" style="display:none;text-align:center;">
+      <h2 style="font-family:'Playfair Display',serif;font-size:28px;color:var(--ink);">Quiz Complete!</h2>
+      <p style="font-size:16px;color:#555;margin-bottom:30px;">You remembered <strong id="fc-score" style="color:var(--green);font-size:20px;"></strong> words correctly.</p>
+      
+      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+        <button class="vocab-submit-btn" style="max-width:200px;margin:0;" onclick="startFlashcards(false)">Restart All</button>
+        <button class="vocab-submit-btn" id="fc-restart-wrong-btn" onclick="startFlashcards(true)" style="background:var(--red);max-width:200px;margin:0;display:none;">Restart Wrong</button>
+      </div>
+
+      <div style="margin-top:40px;">
+        <h3 id="fc-wrong-list-title" style="cursor:pointer;font-family:'Courier Prime',monospace;font-size:13px;color:var(--red);display:inline-block;" onclick="toggleWrongList()">View Wrong Words ▼</h3>
+        <div id="fc-wrong-list" style="display:none;text-align:left;margin-top:20px;background:var(--cream);border:1px solid var(--border);padding:20px;border-radius:8px;"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
