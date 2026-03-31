@@ -1039,9 +1039,9 @@ function showFcResults() {
     
     let html = '';
     fcWrongWords.forEach(w => {
-      html += `<div style="margin-bottom:14px;border-bottom:1px solid var(--cream);padding-bottom:10px;">
+      html += `<div style="margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;">
         <strong style="font-size:16px;color:var(--ink);">${w.vocab}</strong>
-        <div style="font-size:12px;color:#555;margin-top:4px;">
+        <div style="font-size:12px;color:var(--ink);opacity:0.8;margin-top:4px;">
           ${w.meaning_english ? `EN: ${w.meaning_english}<br>` : ''}
           ${w.meaning_hindi ? `HI: ${w.meaning_hindi}<br>` : ''}
           ${w.sentence ? `<em>Ex: ${w.sentence}</em>` : ''}
@@ -3320,7 +3320,7 @@ function submitYtVideo(){
       <button class="vocab-back-btn" onclick="closeFlashcardPage()">← Back to Hub</button>
       <span class="vocab-page-title">🃏 Vocabulary Flashcards</span>
     </div>
-    <label style="font-size:12px;cursor:pointer;color:var(--paper);font-family:'Courier Prime',monospace;"><input type="checkbox" id="fc-timer-toggle" onchange="toggleFcTimer()"> Enable Timer</label>
+    <label style="font-size:12px;cursor:pointer;font-family:'Courier Prime',monospace;"><input type="checkbox" id="fc-timer-toggle" onchange="toggleFcTimer()"> Enable Timer</label>
   </div>
   <div class="vocab-page-inner" style="max-width:600px;">
     
